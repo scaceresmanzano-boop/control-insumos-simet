@@ -90,6 +90,7 @@ def seed():
     db.init_schema(conn)
     n_insumos = _seed_insumos(conn)
     n_consumo = _seed_consumo_operaciones(conn)
+    db.asignar_codigos_automaticos(conn)
     conn.close()
     return n_insumos, n_consumo
 

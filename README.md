@@ -10,11 +10,25 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+O más simple: doble clic en `Abrir_App.bat` (o en el acceso directo del
+Escritorio si ya lo creaste) — abre el servidor local y la app en el
+navegador sin usar la terminal.
+
 La primera vez que corre, crea automáticamente `data/insumos.db` y la llena con
 los 36 insumos del Excel `Clasificacion_ABC_Multicriterio_SIMET-USACH_1.xlsx`
 (solo ID y nombre — el resto de los campos se completan desde la pantalla
 **Ver estado**) y con las 12 filas de referencia del Excel
 `Ficha_Consumo_Operaciones_SIMET-USACH_2.xlsx`.
+
+## Lector de código de barras
+
+Cada insumo tiene un código único (formato `INS-0001`, autogenerado). En **Ver
+estado** hay un botón para generar los códigos faltantes y otro para descargar
+un PDF con etiquetas de código de barras (Code128) listas para imprimir y
+pegar en cada insumo. En **Registrar ingreso** y **Registrar egreso** hay un
+campo "Escanear código de barras": al escanear con cualquier lector USB
+(funciona como teclado) selecciona automáticamente el insumo correspondiente.
+También puedes seleccionar el insumo manualmente sin escanear nada.
 
 ## Pantallas
 

@@ -6,6 +6,7 @@ import streamlit as st
 import db
 from abc_scoring import calcular_clasificacion_abc
 from db import CATEGORIAS
+from labels import generar_pdf_etiquetas
 
 st.set_page_config(page_title="Ver estado", page_icon="📊", layout="wide")
 st.title("📊 Estado de insumos")
@@ -81,11 +82,16 @@ st.caption(
 )
 
 columnas_orden = [
-    "alerta", "id", "nombre", "categoria", "clase_abc", "puntaje_ponderado",
+    "alerta", "id", "codigo", "nombre", "categoria", "clase_abc", "puntaje_ponderado",
     "stock_actual", "stock_minimo", "unidad", "proveedor",
     "costo_unitario", "frecuencia_uso_mensual", "impacto_operacional", "tiempo_reposicion_dias",
 ]
 df = df[columnas_orden]
+
+if st.button("🏷️ Generar códigos automáticos para insumos sin código"):
+    asignados = db.asignar_codigos_automaticos(conn)
+    st.success(f"{asignados} insumo(s) recibieron un código nuevo (formato INS-0000).")
+    st.rerun()
 
 editado = st.data_editor(
     df,
@@ -95,6 +101,7 @@ editado = st.data_editor(
     column_config={
         "alerta": st.column_config.TextColumn("⚠"),
         "id": st.column_config.NumberColumn("ID"),
+        "codigo": st.column_config.TextColumn("Código"),
         "nombre": st.column_config.TextColumn("Insumo"),
         "categoria": st.column_config.SelectboxColumn("Categoría", options=CATEGORIAS),
         "clase_abc": st.column_config.TextColumn("Clase ABC"),
@@ -118,18 +125,30 @@ if st.button("💾 Guardar cambios", type="primary"):
     ]
     original_por_id = {row["id"]: row for row in df.to_dict("records")}
     cambios = 0
+    errores = []
     for _, row in editado.iterrows():
-        original = original_por_id.get(row["id"], {})
+        insumo_id = int(row["id"])
+        original = original_por_id.get(insumo_id, {})
+
+        if row["codigo"] != original.get("codigo"):
+            try:
+                db.set_codigo(conn, insumo_id, None if pd.isna(row["codigo"]) else row["codigo"])
+                cambios += 1
+            except ValueError as e:
+                errores.append(str(e))
+
         diferencias = {c: row[c] for c in campos_editables if row[c] != original.get(c)}
         if diferencias:
             diferencias = {k: (None if pd.isna(v) else v) for k, v in diferencias.items()}
-            db.update_insumo_campos(conn, int(row["id"]), **diferencias)
+            db.update_insumo_campos(conn, insumo_id, **diferencias)
             cambios += 1
 
     resultados = calcular_clasificacion_abc(db.list_insumos(conn))
     db.update_scores_masivo(conn, resultados)
 
-    st.success(f"{cambios} insumo(s) actualizado(s). Clasificación ABC recalculada.")
+    if errores:
+        st.error(" / ".join(errores))
+    st.success(f"{cambios} cambio(s) guardado(s). Clasificación ABC recalculada.")
     st.rerun()
 
 st.divider()
@@ -137,7 +156,7 @@ st.subheader("⬇ Exportar")
 
 export_df = pd.DataFrame([dict(i) for i in db.list_insumos(conn)])
 export_df = export_df.rename(columns={
-    "id": "ID", "nombre": "Nombre del ítem", "categoria": "Categoría",
+    "id": "ID", "codigo": "Código", "nombre": "Nombre del ítem", "categoria": "Categoría",
     "costo_unitario": "Costo unitario (CLP)", "frecuencia_uso_mensual": "Frecuencia de uso (mensual)",
     "impacto_operacional": "Impacto operacional (1-5)", "tiempo_reposicion_dias": "Tiempo de reposición (días)",
     "puntaje_ponderado": "Puntaje ponderado", "clase_abc": "Clasificación ABC",
@@ -154,6 +173,25 @@ st.download_button(
     file_name="estado_insumos_simet.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
+
+st.divider()
+st.subheader("🏷️ Etiquetas para imprimir")
+st.caption(
+    "Genera un PDF con etiquetas de código de barras (una por insumo con código asignado), "
+    "listas para imprimir y pegar en cada insumo. Se leen con cualquier lector de código de barras USB."
+)
+insumos_con_codigo = [i for i in db.list_insumos(conn) if i["codigo"]]
+st.caption(f"{len(insumos_con_codigo)} de {len(db.list_insumos(conn))} insumos tienen código asignado.")
+if insumos_con_codigo:
+    pdf_bytes = generar_pdf_etiquetas(insumos_con_codigo)
+    st.download_button(
+        "Descargar etiquetas (PDF)",
+        data=pdf_bytes,
+        file_name="etiquetas_insumos_simet.pdf",
+        mime="application/pdf",
+    )
+else:
+    st.caption("Ningún insumo tiene código todavía — usa el botón de arriba para generarlos automáticamente.")
 
 st.divider()
 st.subheader("📎 Referencia: consumo por operación")

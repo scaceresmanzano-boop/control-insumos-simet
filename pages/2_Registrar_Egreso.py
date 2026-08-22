@@ -3,6 +3,7 @@ from datetime import date
 import streamlit as st
 
 import db
+from scan_ui import selector_con_scanner
 
 st.set_page_config(page_title="Registrar egreso", page_icon="📤", layout="wide")
 st.title("📤 Registrar egreso de insumo")
@@ -14,10 +15,10 @@ if not insumos:
     st.warning("No hay insumos cargados en el catálogo.")
     st.stop()
 
-opciones = {f"{i['nombre']} (stock actual: {i['stock_actual']:g})": i["id"] for i in insumos}
+opciones, opciones_list, default_index, preseleccion_key = selector_con_scanner(insumos, "egreso")
 
 with st.form("form_egreso", clear_on_submit=True):
-    seleccion = st.selectbox("Insumo", options=list(opciones.keys()))
+    seleccion = st.selectbox("Insumo", options=opciones_list, index=default_index)
     cantidad = st.number_input("Cantidad", min_value=0.0, step=1.0, format="%g")
     ensayo_ot = st.text_input("Ensayo / OT asociado")
     responsable = st.text_input("Responsable")
@@ -39,6 +40,7 @@ with st.form("form_egreso", clear_on_submit=True):
                     conn, insumo_id, cantidad, ensayo_ot.strip(), responsable.strip(),
                     fecha.isoformat(), observacion or None,
                 )
+                st.session_state[preseleccion_key] = None
                 st.success(f"Egreso registrado: -{cantidad:g} de '{seleccion.split(' (stock')[0]}'.")
             except ValueError as e:
                 st.error(str(e))
