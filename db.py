@@ -101,7 +101,11 @@ def get_insumo_por_codigo(conn, codigo):
 
 
 def _codigo_para_id(insumo_id):
-    return f"INS-{insumo_id:04d}"
+    # Sin guion a propósito: algunos lectores de código de barras están
+    # configurados con un layout de teclado distinto al de Windows y el
+    # símbolo "-" puede llegar como otro carácter (ej. "'"). Usar solo
+    # letras/números evita ese problema por completo.
+    return f"INS{insumo_id:04d}"
 
 
 def set_codigo(conn, insumo_id, codigo):
