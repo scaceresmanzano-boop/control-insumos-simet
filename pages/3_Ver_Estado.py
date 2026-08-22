@@ -11,6 +11,51 @@ st.set_page_config(page_title="Ver estado", page_icon="📊", layout="wide")
 st.title("📊 Estado de insumos")
 
 conn = db.get_connection()
+
+with st.expander("➕ Agregar nuevo insumo"):
+    with st.form("form_nuevo_insumo", clear_on_submit=True):
+        col_a, col_b = st.columns(2)
+        with col_a:
+            nombre_nuevo = st.text_input("Nombre del insumo *")
+            categoria_nueva = st.selectbox("Categoría", options=[""] + CATEGORIAS)
+            unidad_nueva = st.text_input("Unidad (ej. unidad, litro, kg)")
+        with col_b:
+            stock_inicial = st.number_input("Stock inicial", min_value=0.0, step=1.0, format="%g")
+            stock_minimo_nuevo = st.number_input("Stock mínimo", min_value=0.0, step=1.0, format="%g")
+            proveedor_nuevo = st.text_input("Proveedor")
+
+        definir_abc = st.checkbox("Definir criterios de clasificación ABC ahora")
+        costo_nuevo = frecuencia_nueva = impacto_nuevo = tiempo_rep_nuevo = None
+        if definir_abc:
+            col_c, col_d, col_e, col_f = st.columns(4)
+            costo_nuevo = col_c.number_input("Costo unitario (CLP)", min_value=0.0, step=1.0)
+            frecuencia_nueva = col_d.number_input("Frecuencia de uso (mensual)", min_value=0.0, step=1.0)
+            impacto_nuevo = col_e.number_input("Impacto operacional (1-5)", min_value=1, max_value=5, step=1)
+            tiempo_rep_nuevo = col_f.number_input("Tiempo de reposición (días)", min_value=0.0, step=1.0)
+
+        agregar = st.form_submit_button("Agregar insumo")
+
+        if agregar:
+            try:
+                nuevo_id = db.crear_insumo(
+                    conn, nombre_nuevo,
+                    categoria=categoria_nueva or None,
+                    unidad=unidad_nueva or None,
+                    stock_actual=stock_inicial,
+                    stock_minimo=stock_minimo_nuevo,
+                    proveedor=proveedor_nuevo or None,
+                    costo_unitario=costo_nuevo,
+                    frecuencia_uso_mensual=frecuencia_nueva,
+                    impacto_operacional=impacto_nuevo,
+                    tiempo_reposicion_dias=tiempo_rep_nuevo,
+                )
+                resultados = calcular_clasificacion_abc(db.list_insumos(conn))
+                db.update_scores_masivo(conn, resultados)
+                st.success(f"Insumo '{nombre_nuevo}' agregado (ID {nuevo_id}).")
+                st.rerun()
+            except ValueError as e:
+                st.error(str(e))
+
 insumos = db.list_insumos(conn)
 
 if not insumos:

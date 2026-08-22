@@ -86,6 +86,32 @@ def get_insumo(conn, insumo_id):
     return conn.execute("SELECT * FROM insumos WHERE id = ?", (insumo_id,)).fetchone()
 
 
+def crear_insumo(conn, nombre, categoria=None, unidad=None, stock_actual=0, stock_minimo=0,
+                  proveedor=None, costo_unitario=None, frecuencia_uso_mensual=None,
+                  impacto_operacional=None, tiempo_reposicion_dias=None):
+    nombre = nombre.strip()
+    if not nombre:
+        raise ValueError("El nombre del insumo no puede estar vacío.")
+    existente = conn.execute(
+        "SELECT id FROM insumos WHERE LOWER(nombre) = LOWER(?)", (nombre,)
+    ).fetchone()
+    if existente:
+        raise ValueError(f"Ya existe un insumo llamado '{nombre}' (ID {existente['id']}).")
+
+    nuevo_id = conn.execute("SELECT COALESCE(MAX(id), 0) + 1 AS siguiente FROM insumos").fetchone()["siguiente"]
+    conn.execute(
+        """
+        INSERT INTO insumos (id, nombre, categoria, unidad, costo_unitario, frecuencia_uso_mensual,
+                              impacto_operacional, tiempo_reposicion_dias, stock_actual, stock_minimo, proveedor)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (nuevo_id, nombre, categoria, unidad, costo_unitario, frecuencia_uso_mensual,
+         impacto_operacional, tiempo_reposicion_dias, stock_actual, stock_minimo, proveedor),
+    )
+    conn.commit()
+    return nuevo_id
+
+
 def update_insumo_campos(conn, insumo_id, **campos):
     if not campos:
         return

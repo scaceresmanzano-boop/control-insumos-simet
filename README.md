@@ -26,7 +26,8 @@ los 36 insumos del Excel `Clasificacion_ABC_Multicriterio_SIMET-USACH_1.xlsx`
    frecuencia de uso, impacto operacional, tiempo de reposición); al guardar,
    la clasificación ABC se recalcula para todo el catálogo con la misma
    metodología (Hadi-Vencheh) del Excel original. Incluye botón para exportar
-   el estado actual a Excel.
+   el estado actual a Excel, y un formulario **➕ Agregar nuevo insumo** para
+   incorporar ítems que no vinieron en el Excel original.
 
 ## Nota sobre Streamlit Community Cloud
 
