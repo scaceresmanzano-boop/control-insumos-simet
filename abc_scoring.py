@@ -1,0 +1,92 @@
+"""Replica la clasificación ABC multicriterio (Hadi-Vencheh) del Excel original.
+
+Fórmulas fuente (hoja "Clasificación ABC Multicriterio" del Excel):
+  Puntaje ponderado = w_costo*norm(costo) + w_frec*norm(frecuencia)
+                       + w_impacto*(impacto-1)/4 + w_tr*norm(tiempo_reposicion)
+  norm(x) = (x - min) / (max - min) sobre el conjunto de insumos con los 4 criterios
+            completos (0 si max == min); impacto operacional usa escala fija 1-5,
+            no min-max.
+  Ranking = orden descendente de puntaje ponderado.
+  % acumulado = suma acumulada de puntaje (en orden de ranking) / suma total de puntaje.
+  Clase ABC: % acumulado <= 0.80 -> A; <= 0.95 -> B; resto -> C.
+Insumos con algún criterio en blanco quedan sin puntaje ni clase (None), igual que
+la celda vacía en el Excel.
+"""
+
+PESOS_DEFECTO = {
+    "costo": 0.25,
+    "frecuencia": 0.25,
+    "impacto": 0.25,
+    "tiempo_reposicion": 0.25,
+}
+
+
+def _normalizar(valor, minimo, maximo):
+    if maximo == minimo:
+        return 0.0
+    return (valor - minimo) / (maximo - minimo)
+
+
+def calcular_clasificacion_abc(insumos, pesos=None):
+    """insumos: iterable de dicts/Rows con id, costo_unitario, frecuencia_uso_mensual,
+    impacto_operacional, tiempo_reposicion_dias.
+    Devuelve lista de dicts {id, puntaje_ponderado, clase_abc} para TODOS los insumos
+    recibidos (puntaje_ponderado/clase_abc en None si falta algún criterio)."""
+    pesos = pesos or PESOS_DEFECTO
+    if abs(sum(pesos.values()) - 1.0) > 1e-6:
+        raise ValueError("Los pesos deben sumar 1.0")
+
+    completos = [
+        i for i in insumos
+        if i["costo_unitario"] is not None
+        and i["frecuencia_uso_mensual"] is not None
+        and i["impacto_operacional"] is not None
+        and i["tiempo_reposicion_dias"] is not None
+    ]
+
+    resultados = {i["id"]: {"id": i["id"], "puntaje_ponderado": None, "clase_abc": None} for i in insumos}
+
+    if not completos:
+        return list(resultados.values())
+
+    costos = [i["costo_unitario"] for i in completos]
+    frecs = [i["frecuencia_uso_mensual"] for i in completos]
+    trs = [i["tiempo_reposicion_dias"] for i in completos]
+    min_c, max_c = min(costos), max(costos)
+    min_f, max_f = min(frecs), max(frecs)
+    min_t, max_t = min(trs), max(trs)
+
+    puntajes = []
+    for i in completos:
+        norm_costo = _normalizar(i["costo_unitario"], min_c, max_c)
+        norm_frec = _normalizar(i["frecuencia_uso_mensual"], min_f, max_f)
+        norm_impacto = (i["impacto_operacional"] - 1) / 4
+        norm_tr = _normalizar(i["tiempo_reposicion_dias"], min_t, max_t)
+        puntaje = (
+            pesos["costo"] * norm_costo
+            + pesos["frecuencia"] * norm_frec
+            + pesos["impacto"] * norm_impacto
+            + pesos["tiempo_reposicion"] * norm_tr
+        )
+        puntajes.append({"id": i["id"], "puntaje_ponderado": puntaje})
+
+    total = sum(p["puntaje_ponderado"] for p in puntajes)
+    puntajes.sort(key=lambda p: (-p["puntaje_ponderado"], p["id"]))
+
+    acumulado = 0.0
+    for p in puntajes:
+        acumulado += p["puntaje_ponderado"]
+        pct_acumulado = acumulado / total if total else 0.0
+        if pct_acumulado <= 0.80:
+            clase = "A"
+        elif pct_acumulado <= 0.95:
+            clase = "B"
+        else:
+            clase = "C"
+        resultados[p["id"]] = {
+            "id": p["id"],
+            "puntaje_ponderado": p["puntaje_ponderado"],
+            "clase_abc": clase,
+        }
+
+    return list(resultados.values())
