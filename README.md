@@ -39,6 +39,22 @@ o iniciales — queda guardado para la próxima vez. Al elegir un insumo tambié
 se muestra quién fue la última persona que lo retiró, cuándo y para qué
 ensayo/OT.
 
+## Acceso restringido: agregar insumos nuevos
+
+Solo quien tenga la contraseña de administrador puede usar el formulario
+"➕ Agregar nuevo insumo" en Ver Estado — todo lo demás (ingresos, egresos,
+ver estado, escanear, editar stock/proveedor/ABC) queda disponible para
+cualquiera. La contraseña se configura así (nunca se sube a git):
+
+- **Local**: copia `.streamlit/secrets.toml.example` a `.streamlit/secrets.toml`
+  y cambia el valor de `admin_password`.
+- **Streamlit Cloud**: en tu app → Manage app → Settings → Secrets, pega:
+  ```
+  admin_password = "tu-clave"
+  ```
+  (debe ser la misma clave que uses localmente si quieres que funcione igual
+  en ambos lados).
+
 ## Pantallas
 
 1. **Registrar ingreso** — suma stock (compra recibida).
