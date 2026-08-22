@@ -48,6 +48,11 @@ CREATE TABLE IF NOT EXISTS consumo_operaciones (
     costo_por_probeta REAL,
     fuente_dato TEXT
 );
+
+CREATE TABLE IF NOT EXISTS usuarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    iniciales TEXT UNIQUE NOT NULL
+);
 """
 
 CATEGORIAS = [
@@ -56,6 +61,13 @@ CATEGORIAS = [
     "EPP-Seguridad",
     "Insumo general",
 ]
+
+USUARIOS_INICIALES = [
+    "GRC", "RCG", "SRS", "ARR", "DPG", "ASH", "SCM", "JAG", "MRR", "DBD",
+    "ACA", "BAZ", "SML", "AVR", "CCE", "MMG", "DHU", "GCS", "PCP",
+]
+
+OTRO_USUARIO = "➕ Otro (nuevo)"
 
 
 def get_connection():
@@ -73,6 +85,12 @@ def init_schema(conn):
         conn.execute("ALTER TABLE insumos ADD COLUMN codigo TEXT")
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_insumos_codigo ON insumos(codigo) WHERE codigo IS NOT NULL"
+        )
+    sin_usuarios = conn.execute("SELECT COUNT(*) AS n FROM usuarios").fetchone()["n"] == 0
+    if sin_usuarios:
+        conn.executemany(
+            "INSERT OR IGNORE INTO usuarios (iniciales) VALUES (?)",
+            [(i,) for i in dict.fromkeys(USUARIOS_INICIALES)],
         )
     conn.commit()
 
@@ -233,3 +251,23 @@ def list_movimientos(conn, insumo_id=None, limit=200):
 
 def list_consumo_operaciones(conn):
     return conn.execute("SELECT * FROM consumo_operaciones ORDER BY operacion, insumo").fetchall()
+
+
+def get_ultimo_egreso(conn, insumo_id):
+    return conn.execute(
+        "SELECT * FROM movimientos WHERE insumo_id = ? AND tipo = 'egreso' ORDER BY id DESC LIMIT 1",
+        (insumo_id,),
+    ).fetchone()
+
+
+def list_usuarios(conn):
+    return [row["iniciales"] for row in conn.execute("SELECT iniciales FROM usuarios ORDER BY iniciales")]
+
+
+def crear_usuario(conn, iniciales):
+    iniciales = iniciales.strip().upper()
+    if not iniciales:
+        raise ValueError("Las iniciales no pueden estar vacías.")
+    conn.execute("INSERT OR IGNORE INTO usuarios (iniciales) VALUES (?)", (iniciales,))
+    conn.commit()
+    return iniciales

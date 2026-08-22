@@ -30,6 +30,15 @@ campo "Escanear código de barras": al escanear con cualquier lector USB
 (funciona como teclado) selecciona automáticamente el insumo correspondiente.
 También puedes seleccionar el insumo manualmente sin escanear nada.
 
+## Usuarios
+
+El campo "Responsable" de **Registrar egreso** es una lista predefinida de
+iniciales del personal del laboratorio (precargada en la base de datos). Si
+alguien no está en la lista, se elige "➕ Otro (nuevo)" y se escribe su nombre
+o iniciales — queda guardado para la próxima vez. Al elegir un insumo también
+se muestra quién fue la última persona que lo retiró, cuándo y para qué
+ensayo/OT.
+
 ## Pantallas
 
 1. **Registrar ingreso** — suma stock (compra recibida).
