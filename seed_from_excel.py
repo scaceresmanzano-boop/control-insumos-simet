@@ -1,8 +1,8 @@
-"""Carga inicial (idempotente) de datos desde los Excel de la tesis hacia SQLite.
+"""Carga inicial (idempotente) del catálogo de insumos desde el Excel consolidado de la tesis.
 
-Se apoya en posiciones de columna fijas (no en texto de encabezado) porque ambos
-Excel tienen encabezados fuera de la fila 1 y texto con acentos/saltos de línea
-que conviene no usar como clave de matching.
+Se apoya en posiciones de columna fijas (no en texto de encabezado) porque el Excel
+tiene encabezados fuera de la fila 1 y texto con acentos/saltos de línea que conviene
+no usar como clave de matching.
 """
 from pathlib import Path
 import openpyxl
@@ -10,77 +10,50 @@ import openpyxl
 import db
 
 BASE_DIR = Path(__file__).parent
-ARCHIVO_ABC = BASE_DIR / "Clasificacion_ABC_Multicriterio_SIMET-USACH_1.xlsx"
-ARCHIVO_CONSUMO = BASE_DIR / "Ficha_Consumo_Operaciones_SIMET-USACH_2.xlsx"
+ARCHIVO_CONSOLIDADO = BASE_DIR / "Control_Insumos_Consolidado_SIMET-USACH.xlsx"
 
-HOJA_ABC = "Clasificación ABC Multicriterio"
-FILA_HEADER_ABC = 11
-FILA_INICIO_ABC = 13  # fila 12 es el ejemplo, se excluye
+HOJA_CATALOGO = "Catálogo de Insumos"
+FILA_INICIO = 12  # fila 11 es el ejemplo (ID 0), se excluye
 
-HOJA_CONSUMO = "Ficha de Consumo"
-FILA_INICIO_CONSUMO = 4
+# Índice de columna (1-based) -> nombre de campo en la tabla insumos.
+COLUMNAS = {
+    1: "id",
+    2: "nombre",
+    3: "categoria",
+    4: "operacion",
+    5: "costo_unitario",
+    6: "unidades_por_cambio",
+    8: "frecuencia_uso_mensual",
+    9: "rendimiento_probetas",
+    11: "impacto_operacional",
+    12: "tiempo_reposicion_dias",
+    24: "fuente_dato",
+    25: "ubicacion",
+}
 
 
 def _seed_insumos(conn):
-    wb = openpyxl.load_workbook(ARCHIVO_ABC, data_only=True)
-    ws = wb[HOJA_ABC]
+    wb = openpyxl.load_workbook(ARCHIVO_CONSOLIDADO, data_only=True)
+    ws = wb[HOJA_CATALOGO]
     filas = []
-    for row in ws.iter_rows(min_row=FILA_INICIO_ABC, max_row=ws.max_row):
-        id_val = row[0].value  # col A
-        nombre = row[1].value  # col B
-        if id_val is None or nombre is None or str(nombre).strip() == "":
+    for row in ws.iter_rows(min_row=FILA_INICIO, max_row=ws.max_row):
+        valores = {campo: row[col - 1].value for col, campo in COLUMNAS.items()}
+        if valores["id"] is None or not valores["nombre"]:
             continue
-        categoria = row[2].value  # col C
-        costo = row[3].value  # col D
-        frecuencia = row[4].value  # col E
-        impacto = row[5].value  # col F
-        tiempo_rep = row[6].value  # col G
-        filas.append((int(id_val), str(nombre).strip(), categoria, costo, frecuencia, impacto, tiempo_rep))
+        valores["id"] = int(valores["id"])
+        filas.append(valores)
 
-    for id_val, nombre, categoria, costo, frecuencia, impacto, tiempo_rep in filas:
+    campos = list(COLUMNAS.values())
+    for v in filas:
+        set_clause = ", ".join(f"{c} = excluded.{c}" for c in campos if c != "id")
         conn.execute(
-            """
-            INSERT INTO insumos (id, nombre, categoria, costo_unitario, frecuencia_uso_mensual,
-                                  impacto_operacional, tiempo_reposicion_dias)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET nombre = excluded.nombre
+            f"""
+            INSERT INTO insumos ({', '.join(campos)})
+            VALUES ({', '.join('?' for _ in campos)})
+            ON CONFLICT(id) DO UPDATE SET {set_clause}
             """,
-            (id_val, nombre, categoria, costo, frecuencia, impacto, tiempo_rep),
+            [v[c] for c in campos],
         )
-    conn.commit()
-    return len(filas)
-
-
-def _seed_consumo_operaciones(conn):
-    existentes = conn.execute("SELECT COUNT(*) AS n FROM consumo_operaciones").fetchone()["n"]
-    if existentes > 0:
-        return existentes
-
-    wb = openpyxl.load_workbook(ARCHIVO_CONSUMO, data_only=True)
-    ws = wb[HOJA_CONSUMO]
-    filas = []
-    for row in ws.iter_rows(min_row=FILA_INICIO_CONSUMO, max_row=ws.max_row):
-        operacion = row[0].value  # A
-        insumo = row[1].value  # B
-        if operacion is None and insumo is None:
-            continue
-        unidad = row[2].value  # C
-        costo = row[3].value  # D
-        unidades_cambio = row[4].value  # E
-        costo_cambio = row[5].value  # F
-        rendimiento = row[6].value  # G
-        costo_probeta = row[7].value  # H
-        fuente = row[8].value  # I
-        filas.append((operacion, insumo, unidad, costo, unidades_cambio, costo_cambio, rendimiento, costo_probeta, fuente))
-
-    conn.executemany(
-        """
-        INSERT INTO consumo_operaciones (operacion, insumo, unidad, costo_unitario, unidades_por_cambio,
-                                          costo_por_cambio, rendimiento_probetas, costo_por_probeta, fuente_dato)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        filas,
-    )
     conn.commit()
     return len(filas)
 
@@ -89,13 +62,11 @@ def seed():
     conn = db.get_connection()
     db.init_schema(conn)
     n_insumos = _seed_insumos(conn)
-    n_consumo = _seed_consumo_operaciones(conn)
     db.asignar_codigos_automaticos(conn)
     conn.close()
-    return n_insumos, n_consumo
+    return n_insumos
 
 
 if __name__ == "__main__":
-    n_insumos, n_consumo = seed()
+    n_insumos = seed()
     print(f"Insumos cargados/actualizados: {n_insumos}")
-    print(f"Filas de consumo por operación cargadas: {n_consumo}")

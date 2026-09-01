@@ -3,12 +3,14 @@ from datetime import date
 import streamlit as st
 
 import db
+from bootstrap import asegurar_base_lista
 from db import OTRO_USUARIO
 from scan_ui import selector_con_scanner
 
 st.set_page_config(page_title="Registrar egreso", page_icon="📤", layout="wide")
 st.title("📤 Registrar egreso de insumo")
 
+asegurar_base_lista()
 conn = db.get_connection()
 insumos = db.list_insumos(conn)
 
@@ -37,6 +39,7 @@ with st.form("form_egreso", clear_on_submit=True):
     ensayo_ot = st.text_input("Ensayo / OT asociado")
     responsable_sel = st.selectbox("Responsable", options=usuarios + [OTRO_USUARIO])
     responsable_nuevo = st.text_input("Si elegiste 'Otro (nuevo)', escribe las iniciales o nombre aquí")
+    ram_asociado = st.text_input("RAM asociado (opcional)", help="N° de folio de la Resolución de Aprobación de Muestra, si corresponde.")
     fecha = st.date_input("Fecha", value=date.today())
     observacion = st.text_area("Observación (opcional)", "")
     enviado = st.form_submit_button("Registrar egreso")
@@ -53,7 +56,7 @@ with st.form("form_egreso", clear_on_submit=True):
             try:
                 db.registrar_egreso(
                     conn, insumo_id, cantidad, ensayo_ot.strip(), responsable,
-                    fecha.isoformat(), observacion or None,
+                    fecha.isoformat(), ram_asociado.strip() or None, observacion or None,
                 )
                 if responsable_sel == OTRO_USUARIO:
                     db.crear_usuario(conn, responsable)
@@ -73,6 +76,7 @@ if movimientos:
                 "Cantidad": m["cantidad"],
                 "Ensayo/OT": m["ensayo_ot"],
                 "Responsable": m["responsable"],
+                "RAM asociado": m["ram_asociado"],
                 "Observación": m["observacion"],
             }
             for m in movimientos

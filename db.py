@@ -10,15 +10,20 @@ CREATE TABLE IF NOT EXISTS insumos (
     id INTEGER PRIMARY KEY,
     nombre TEXT UNIQUE NOT NULL,
     categoria TEXT,
+    operacion TEXT,
     unidad TEXT,
     costo_unitario REAL,
+    unidades_por_cambio REAL,
     frecuencia_uso_mensual REAL,
+    rendimiento_probetas REAL,
     impacto_operacional INTEGER,
     tiempo_reposicion_dias REAL,
+    fuente_dato TEXT,
+    ubicacion TEXT,
     puntaje_ponderado REAL,
     clase_abc TEXT CHECK (clase_abc IN ('A','B','C') OR clase_abc IS NULL),
     stock_actual REAL NOT NULL DEFAULT 0,
-    stock_minimo REAL NOT NULL DEFAULT 0,
+    stock_minimo REAL,
     proveedor TEXT,
     codigo TEXT UNIQUE
 );
@@ -32,21 +37,9 @@ CREATE TABLE IF NOT EXISTS movimientos (
     proveedor TEXT,
     ensayo_ot TEXT,
     responsable TEXT,
+    ram_asociado TEXT,
     observacion TEXT,
     creado_en TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS consumo_operaciones (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    operacion TEXT,
-    insumo TEXT,
-    unidad TEXT,
-    costo_unitario REAL,
-    unidades_por_cambio REAL,
-    costo_por_cambio REAL,
-    rendimiento_probetas REAL,
-    costo_por_probeta REAL,
-    fuente_dato TEXT
 );
 
 CREATE TABLE IF NOT EXISTS usuarios (
@@ -78,14 +71,31 @@ def get_connection():
     return conn
 
 
+# Columnas agregadas en versiones posteriores al esquema inicial de insumos;
+# se agregan solas (ALTER TABLE) a una base de datos ya existente que no las tenga.
+COLUMNAS_NUEVAS_INSUMOS = {
+    "codigo": "TEXT",
+    "operacion": "TEXT",
+    "unidades_por_cambio": "REAL",
+    "rendimiento_probetas": "REAL",
+    "fuente_dato": "TEXT",
+    "ubicacion": "TEXT",
+}
+
+
 def init_schema(conn):
     conn.executescript(SCHEMA)
     columnas = {row["name"] for row in conn.execute("PRAGMA table_info(insumos)")}
+    for nombre, tipo in COLUMNAS_NUEVAS_INSUMOS.items():
+        if nombre not in columnas:
+            conn.execute(f"ALTER TABLE insumos ADD COLUMN {nombre} {tipo}")
     if "codigo" not in columnas:
-        conn.execute("ALTER TABLE insumos ADD COLUMN codigo TEXT")
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_insumos_codigo ON insumos(codigo) WHERE codigo IS NOT NULL"
         )
+    columnas_mov = {row["name"] for row in conn.execute("PRAGMA table_info(movimientos)")}
+    if "ram_asociado" not in columnas_mov:
+        conn.execute("ALTER TABLE movimientos ADD COLUMN ram_asociado TEXT")
     sin_usuarios = conn.execute("SELECT COUNT(*) AS n FROM usuarios").fetchone()["n"] == 0
     if sin_usuarios:
         conn.executemany(
@@ -147,9 +157,11 @@ def asignar_codigos_automaticos(conn):
     return len(sin_codigo)
 
 
-def crear_insumo(conn, nombre, categoria=None, unidad=None, stock_actual=0, stock_minimo=0,
-                  proveedor=None, costo_unitario=None, frecuencia_uso_mensual=None,
-                  impacto_operacional=None, tiempo_reposicion_dias=None, codigo=None):
+def crear_insumo(conn, nombre, categoria=None, operacion=None, unidad=None, stock_actual=0,
+                  proveedor=None, costo_unitario=None, unidades_por_cambio=None,
+                  frecuencia_uso_mensual=None, rendimiento_probetas=None,
+                  impacto_operacional=None, tiempo_reposicion_dias=None,
+                  fuente_dato=None, ubicacion=None, codigo=None):
     nombre = nombre.strip()
     if not nombre:
         raise ValueError("El nombre del insumo no puede estar vacío.")
@@ -168,14 +180,15 @@ def crear_insumo(conn, nombre, categoria=None, unidad=None, stock_actual=0, stoc
     nuevo_id = conn.execute("SELECT COALESCE(MAX(id), 0) + 1 AS siguiente FROM insumos").fetchone()["siguiente"]
     conn.execute(
         """
-        INSERT INTO insumos (id, nombre, categoria, unidad, costo_unitario, frecuencia_uso_mensual,
-                              impacto_operacional, tiempo_reposicion_dias, stock_actual, stock_minimo,
-                              proveedor, codigo)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO insumos (id, nombre, categoria, operacion, unidad, costo_unitario,
+                              unidades_por_cambio, frecuencia_uso_mensual, rendimiento_probetas,
+                              impacto_operacional, tiempo_reposicion_dias, fuente_dato, ubicacion,
+                              stock_actual, proveedor, codigo)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (nuevo_id, nombre, categoria, unidad, costo_unitario, frecuencia_uso_mensual,
-         impacto_operacional, tiempo_reposicion_dias, stock_actual, stock_minimo, proveedor,
-         codigo or _codigo_para_id(nuevo_id)),
+        (nuevo_id, nombre, categoria, operacion, unidad, costo_unitario, unidades_por_cambio,
+         frecuencia_uso_mensual, rendimiento_probetas, impacto_operacional, tiempo_reposicion_dias,
+         fuente_dato, ubicacion, stock_actual, proveedor, codigo or _codigo_para_id(nuevo_id)),
     )
     conn.commit()
     return nuevo_id
@@ -193,10 +206,10 @@ def update_insumo_campos(conn, insumo_id, **campos):
 
 
 def update_scores_masivo(conn, resultados):
-    """resultados: lista de dicts {id, puntaje_ponderado, clase_abc}."""
+    """resultados: lista de dicts {id, puntaje_ponderado, clase_abc, stock_minimo}."""
     conn.executemany(
-        "UPDATE insumos SET puntaje_ponderado = ?, clase_abc = ? WHERE id = ?",
-        [(r["puntaje_ponderado"], r["clase_abc"], r["id"]) for r in resultados],
+        "UPDATE insumos SET puntaje_ponderado = ?, clase_abc = ?, stock_minimo = ? WHERE id = ?",
+        [(r["puntaje_ponderado"], r["clase_abc"], r.get("stock_minimo"), r["id"]) for r in resultados],
     )
     conn.commit()
 
@@ -214,7 +227,7 @@ def registrar_ingreso(conn, insumo_id, cantidad, proveedor, fecha, observacion=N
     conn.commit()
 
 
-def registrar_egreso(conn, insumo_id, cantidad, ensayo_ot, responsable, fecha, observacion=None):
+def registrar_egreso(conn, insumo_id, cantidad, ensayo_ot, responsable, fecha, ram_asociado=None, observacion=None):
     insumo = get_insumo(conn, insumo_id)
     if insumo is None:
         raise ValueError("Insumo no encontrado.")
@@ -223,9 +236,9 @@ def registrar_egreso(conn, insumo_id, cantidad, ensayo_ot, responsable, fecha, o
             f"Stock insuficiente: disponible {insumo['stock_actual']:g}, solicitado {cantidad:g}."
         )
     conn.execute(
-        "INSERT INTO movimientos (insumo_id, tipo, cantidad, fecha, ensayo_ot, responsable, observacion, creado_en) "
-        "VALUES (?, 'egreso', ?, ?, ?, ?, ?, ?)",
-        (insumo_id, cantidad, fecha, ensayo_ot, responsable, observacion, datetime.now().isoformat(timespec="seconds")),
+        "INSERT INTO movimientos (insumo_id, tipo, cantidad, fecha, ensayo_ot, responsable, ram_asociado, observacion, creado_en) "
+        "VALUES (?, 'egreso', ?, ?, ?, ?, ?, ?, ?)",
+        (insumo_id, cantidad, fecha, ensayo_ot, responsable, ram_asociado, observacion, datetime.now().isoformat(timespec="seconds")),
     )
     conn.execute(
         "UPDATE insumos SET stock_actual = stock_actual - ? WHERE id = ?",
@@ -247,10 +260,6 @@ def list_movimientos(conn, insumo_id=None, limit=200):
         "JOIN insumos i ON i.id = m.insumo_id ORDER BY m.id DESC LIMIT ?",
         (limit,),
     ).fetchall()
-
-
-def list_consumo_operaciones(conn):
-    return conn.execute("SELECT * FROM consumo_operaciones ORDER BY operacion, insumo").fetchall()
 
 
 def get_ultimo_egreso(conn, insumo_id):

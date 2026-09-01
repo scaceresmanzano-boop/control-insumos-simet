@@ -3,11 +3,13 @@ from datetime import date
 import streamlit as st
 
 import db
+from bootstrap import asegurar_base_lista
 from scan_ui import selector_con_scanner
 
 st.set_page_config(page_title="Registrar ingreso", page_icon="📥", layout="wide")
 st.title("📥 Registrar ingreso de insumo")
 
+asegurar_base_lista()
 conn = db.get_connection()
 insumos = db.list_insumos(conn)
 
