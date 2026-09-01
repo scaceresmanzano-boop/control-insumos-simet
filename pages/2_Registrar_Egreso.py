@@ -6,8 +6,10 @@ import db
 from bootstrap import asegurar_base_lista
 from db import OTRO_USUARIO
 from scan_ui import selector_con_scanner
+from theme import aplicar_tema
 
 st.set_page_config(page_title="Registrar egreso", page_icon="📤", layout="wide")
+aplicar_tema()
 st.title("📤 Registrar egreso de insumo")
 
 asegurar_base_lista()
@@ -42,7 +44,7 @@ with st.form("form_egreso", clear_on_submit=True):
     ram_asociado = st.text_input("RAM asociado (opcional)", help="N° de folio de la Resolución de Aprobación de Muestra, si corresponde.")
     fecha = st.date_input("Fecha", value=date.today())
     observacion = st.text_area("Observación (opcional)", "")
-    enviado = st.form_submit_button("Registrar egreso")
+    enviado = st.form_submit_button("Registrar egreso", key="egreso_submit")
 
     if enviado:
         responsable = responsable_nuevo.strip() if responsable_sel == OTRO_USUARIO else responsable_sel

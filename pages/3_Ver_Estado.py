@@ -11,8 +11,10 @@ from db import CATEGORIAS
 from labels import generar_pdf_etiquetas
 from recalculo import recalcular_catalogo
 from stock_calc import calcular_alertas
+from theme import aplicar_tema
 
 st.set_page_config(page_title="Ver estado", page_icon="📊", layout="wide")
+aplicar_tema()
 st.title("📊 Estado de insumos")
 
 asegurar_base_lista()

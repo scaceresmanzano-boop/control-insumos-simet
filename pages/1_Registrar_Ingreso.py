@@ -5,8 +5,10 @@ import streamlit as st
 import db
 from bootstrap import asegurar_base_lista
 from scan_ui import selector_con_scanner
+from theme import aplicar_tema
 
 st.set_page_config(page_title="Registrar ingreso", page_icon="📥", layout="wide")
+aplicar_tema()
 st.title("📥 Registrar ingreso de insumo")
 
 asegurar_base_lista()
@@ -25,7 +27,7 @@ with st.form("form_ingreso", clear_on_submit=True):
     proveedor = st.text_input("Proveedor")
     fecha = st.date_input("Fecha", value=date.today())
     observacion = st.text_area("Observación (opcional)", "")
-    enviado = st.form_submit_button("Registrar ingreso")
+    enviado = st.form_submit_button("Registrar ingreso", key="ingreso_submit")
 
     if enviado:
         if cantidad <= 0:
